@@ -2,14 +2,34 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const express = require("express");
 const db = require('./db')
+const cors = require('cors')
 require('dotenv').config();
-
 const app = express();
+
 const port = process.env.SERVERPORT;
+app.use(express.json());
+
+app.use(cors({
+    origin: ['http://localhost:3000'],
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true
+}));
 
 app.listen(port, () => {
     console.log("Running server on port: " + port.toString());
 });
+
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (token == null) return res.sendStatus(401);
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+        if (err) return res.sendStatus(403);
+        req.user = user;
+        next();
+    });
+};
 
 
 //////////////////////////////////////////////////
@@ -18,7 +38,10 @@ app.listen(port, () => {
 
 // Sign-Up User
 app.post('/signup', async (req, res) => {
-    const { name, email, password } = req.body;
+    const name = req.body.name;
+    const email = req.body.email;
+    const password = req.body.password;
+
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
         const sql = 'INSERT INTO Users (name, email, password) VALUES (?, ?, ?)';
@@ -46,12 +69,12 @@ app.post('/login', (req, res) => {
         if (!validPassword) return res.status(400).json({ error: 'Invalid credentials' });
 
         const token = jwt.sign({ userId: user.user_id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-        res.json({ token });
+        res.status(200).json({ token });
     });
 });
 
 // Update User Profile
-app.put('/users/:id', (req, res) => {
+app.put('/users/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
     const { name, email } = req.body;
     const sql = 'UPDATE Users SET name = ?, email = ? WHERE user_id = ?';
@@ -62,25 +85,37 @@ app.put('/users/:id', (req, res) => {
 });
 
 // Change User Password
-app.put('/users/:id/password', async (req, res) => {
+app.put('/users/:id/password', authenticateToken, async (req, res) => {
     const { id } = req.params;
-    const { password } = req.body;
+    const { oldPassword, newPassword } = req.body;
     try {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const sql = 'UPDATE Users SET password = ? WHERE user_id = ?';
-        db.query(sql, [hashedPassword, id], (err, result) => {
+        let sql = 'SELECT password FROM Users WHERE user_id = ?';
+        db.query(sql, [id], async (err, result) => {
             if (err) return res.status(500).json({ error: err.message });
-            res.status(200).json({ message: 'Password updated successfully' });
+            if (result.length === 0) return res.status(404).json({ error: 'User not found' });
+
+            const isMatch = await bcrypt.compare(oldPassword, result[0].password);
+            if (isMatch) {
+                const hashedPassword = await bcrypt.hash(newPassword, 10);
+                sql = 'UPDATE Users SET password = ? WHERE user_id = ?';
+                db.query(sql, [hashedPassword, id], (err, result) => {
+                    if (err) return res.status(500).json({ error: err.message });
+                    res.status(200).json({ message: 'Password updated successfully' });
+                });
+            } else {
+                res.status(401).json({ error: 'Old password is incorrect' });
+            }
         });
+
     } catch (error) {
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
 
 // Delete User
-app.delete('/users/:id', (req, res) => {
+app.delete('/users/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
-    const sql = 'DELETE FROM Users WHERE user_id = ?';
+    let sql = 'DELETE FROM Users WHERE user_id = ?';
     db.query(sql, [id], (err, result) => {
         if (err) return res.status(500).json({ error: err.message });
         res.status(200).json({ message: 'User deleted successfully' });
@@ -92,7 +127,7 @@ app.delete('/users/:id', (req, res) => {
 //////////////////////////////////////////////////
 
 // Create Task
-app.post('/tasks', (req, res) => {
+app.post('/tasks', authenticateToken, (req, res) => {
     const { userId, title, description, status, priority, dueDate } = req.body;
     const sql = 'INSERT INTO Tasks (user_id, title, description, status, priority, due_date) VALUES (?, ?, ?, ?, ?, ?)';
     db.query(sql, [userId, title, description, status, priority, dueDate], (err, result) => {
@@ -102,7 +137,7 @@ app.post('/tasks', (req, res) => {
 });
 
 // Read Tasks
-app.get('/tasks', (req, res) => {
+app.get('/tasks', authenticateToken, (req, res) => {
     const { userId } = req.query;
     const sql = 'SELECT * FROM Tasks WHERE user_id = ?';
     db.query(sql, [userId], (err, results) => {
@@ -112,7 +147,7 @@ app.get('/tasks', (req, res) => {
 });
 
 // Update Task
-app.put('/tasks/:id', (req, res) => {
+app.put('/tasks/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
     const { title, description, status, priority, dueDate } = req.body;
     const sql = 'UPDATE Tasks SET title = ?, description = ?, status = ?, priority = ?, due_date = ? WHERE task_id = ?';
@@ -123,7 +158,7 @@ app.put('/tasks/:id', (req, res) => {
 });
 
 // Delete Task
-app.delete('/tasks/:id', (req, res) => {
+app.delete('/tasks/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
     const sql = 'DELETE FROM Tasks WHERE task_id = ?';
     db.query(sql, [id], (err, result) => {
@@ -137,17 +172,17 @@ app.delete('/tasks/:id', (req, res) => {
 //////////////////////////////////////////////////
 
 // Create Group
-app.post('/groups', (req, res) => {
-    const { groupName, description } = req.body;
-    const sql = 'INSERT INTO Group_List (group_name, description) VALUES (?, ?)';
-    db.query(sql, [groupName, description], (err, result) => {
+app.post('/groups', authenticateToken, (req, res) => {
+    const { groupName, description, adminId } = req.body;
+    const sql = 'INSERT INTO Group_List (group_name, description, admin_id) VALUES (?, ?, ?)';
+    db.query(sql, [groupName, description, adminId], (err, result) => {
         if (err) return res.status(500).json({ error: err.message });
         res.status(201).json({ message: 'Group created successfully', groupId: result.insertId });
     });
 });
 
 // Read Groups for a User
-app.get('/groups', (req, res) => {
+app.get('/groups', authenticateToken, (req, res) => {
     const { userId } = req.query;
     const sql = `
         SELECT g.group_id, g.group_name, g.description 
@@ -160,12 +195,41 @@ app.get('/groups', (req, res) => {
     });
 });
 
+// Delete Group
+app.delete('/groups/:groupId', authenticateToken, (req, res) => {
+    const { groupId } = req.params;
+    const userId = req.user.userId; // Extracted from JWT token
+
+    // Step 1: Verify that the requesting user is the admin of the group
+    const verifyAdminSql = 'SELECT admin_id FROM Group_List WHERE group_id = ?';
+    db.query(verifyAdminSql, [groupId], (err, result) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (result.length === 0) return res.status(404).json({ error: 'Group not found' });
+
+        const adminId = result[0].admin_id;
+
+        // Step 2: Check if the requesting user is the admin
+        if (adminId !== userId) {
+            return res.status(403).json({ error: 'Only the group admin can delete this group' });
+        }
+
+        // Step 3: Delete the group from Group_List and cascade delete from User_Groups
+        const deleteGroupSql = 'DELETE FROM Group_List WHERE group_id = ?';
+        db.query(deleteGroupSql, [groupId], (err, result) => {
+            if (err) return res.status(500).json({ error: err.message });
+
+            // Deletion was successful
+            res.status(200).json({ message: 'Group deleted successfully, including all related memberships' });
+        });
+    });
+});
+
 //////////////////////////////////////////////////
 ///////////////  USER_GROUP   ////////////////////
 //////////////////////////////////////////////////
 
 // Join Group
-app.post('/groups/join', (req, res) => {
+app.post('/groups/join', authenticateToken, (req, res) => {
     const { userId, groupId, role } = req.body;
     const sql = 'INSERT INTO User_Groups (user_id, group_id, role) VALUES (?, ?, ?)';
     db.query(sql, [userId, groupId, role], (err, result) => {
@@ -175,7 +239,7 @@ app.post('/groups/join', (req, res) => {
 });
 
 // Leave Group
-app.delete('/groups/leave', (req, res) => {
+app.delete('/groups/leave', authenticateToken, (req, res) => {
     const { userId, groupId } = req.body;
     const sql = 'DELETE FROM User_Groups WHERE user_id = ? AND group_id = ?';
     db.query(sql, [userId, groupId], (err, result) => {
@@ -189,7 +253,7 @@ app.delete('/groups/leave', (req, res) => {
 ///////////////////////////////////////////////////
 
 // Create Group Task
-app.post('/groups/:groupId/tasks', (req, res) => {
+app.post('/groups/:groupId/tasks', authenticateToken, (req, res) => {
     const { groupId } = req.params;
     const { title, description, status, dueDate } = req.body;
     const sql = 'INSERT INTO Group_Tasks (group_id, title, description, status, due_date) VALUES (?, ?, ?, ?, ?)';
@@ -200,7 +264,7 @@ app.post('/groups/:groupId/tasks', (req, res) => {
 });
 
 // Read Group Tasks
-app.get('/groups/:groupId/tasks', (req, res) => {
+app.get('/groups/:groupId/tasks', authenticateToken, (req, res) => {
     const { groupId } = req.params;
     const sql = 'SELECT * FROM Group_Tasks WHERE group_id = ?';
     db.query(sql, [groupId], (err, results) => {
@@ -210,7 +274,7 @@ app.get('/groups/:groupId/tasks', (req, res) => {
 });
 
 // Update Group Task
-app.put('/groups/:groupId/tasks/:taskId', (req, res) => {
+app.put('/groups/:groupId/tasks/:taskId', authenticateToken, (req, res) => {
     const { groupId, taskId } = req.params;
     const { title, description, status, dueDate } = req.body;
     const sql = 'UPDATE Group_Tasks SET title = ?, description = ?, status = ?, due_date = ? WHERE group_task_id = ? AND group_id = ?';
@@ -221,7 +285,7 @@ app.put('/groups/:groupId/tasks/:taskId', (req, res) => {
 });
 
 // Delete Group Task
-app.delete('/groups/:groupId/tasks/:taskId', (req, res) => {
+app.delete('/groups/:groupId/tasks/:taskId', authenticateToken, (req, res) => {
     const { groupId, taskId } = req.params;
     const sql = 'DELETE FROM Group_Tasks WHERE group_task_id = ? AND group_id = ?';
     db.query(sql, [taskId, groupId], (err, result) => {
