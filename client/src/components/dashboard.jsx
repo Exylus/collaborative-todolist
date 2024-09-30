@@ -18,6 +18,11 @@ const Dashboard = () => {
         navigate('/groups');
     };
 
+    const handleLogout = () => {
+        localStorage.removeItem('token');
+        navigate('/')
+    }
+
     return (
         <div className="dashboard-container">
             <h1>Welcome to Your Dashboard</h1>
@@ -26,6 +31,7 @@ const Dashboard = () => {
                 <button onClick={handleMyTodoLists}>My Todo Lists</button>
                 <button onClick={handleGroups}>Groups</button>
             </div>
+            <button className='logout-button' onClick={() => handleLogout()}>Log out</button>
         </div>
     );
 };
