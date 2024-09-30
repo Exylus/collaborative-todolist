@@ -1,11 +1,178 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import { GroupModal } from './Modal';
+import './Groups.css';
 
 const Groups = () => {
+    const [groups, setGroups] = useState([]);
+    const [groupName, setGroupName] = useState('');
+    const [description, setDescription] = useState('');
+    const [message, setMessage] = useState('');
+    const [showModal, setShowModal] = useState(false);
+    const [groupToDelete, setGroupToDelete] = useState(null);
+
+    useEffect(() => {
+        // Fetch the list of groups the user is part of when the component loads
+        fetchGroups();
+    });
+
+    const navigate = useNavigate();
+
+    // Function to fetch groups the user is part of
+    const fetchGroups = async () => {
+        const token = localStorage.getItem('token');
+        try {
+            const response = await axios.get('http://localhost:3113/groups', {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+            setGroups(response.data); // Update the state with the fetched groups
+        } catch (error) {
+            if (error.response && error.response.status === 403) {
+                setMessage('Session expired. Please log in again.');
+                localStorage.removeItem('token');
+                navigate('/login');
+            } else {
+                setMessage('Failed to fetch group. Please try again.');
+            }
+            console.error('Error fetching group:', error);
+        }
+    };
+
+    // Function to handle creating a new group
+    const handleCreateGroup = async (e) => {
+        e.preventDefault();
+        const token = localStorage.getItem('token');
+        if (!token) {
+            setMessage('You need to login to create a group.');
+            return navigate('/login');
+        }
+
+        try {
+            const response = await axios.post(
+                'http://localhost:3113/groups/create',
+                { groupName, description },
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            if (response.status === 201) {
+                setMessage('Group created successfully!');
+                setGroupName('');
+                setDescription('');
+                fetchGroups(); // Refresh group list
+            }
+        } catch (error) {
+            if (error.response && error.response.status === 403) {
+                setMessage('Session expired. Please log in again.');
+                localStorage.removeItem('token');
+                navigate('/login');
+            } else {
+                setMessage('Failed to create group. Please try again.');
+            }
+            console.error('Error creating group:', error);
+        }
+    };
+
+    // Function to handle deleting a group
+    const handleDeleteGroup = async () => {
+        if (!groupToDelete) return;
+
+        const token = localStorage.getItem('token');
+        try {
+            const response = await axios.delete(`http://localhost:3113/groups/${groupToDelete}`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (response.status === 200) {
+                setMessage('Group deleted successfully!');
+                setGroupToDelete(null);
+                setShowModal(false);
+                fetchGroups(); // Refresh the group list after deleting a group
+            }
+        } catch (error) {
+            if (error.response && error.response.status === 403) {
+                setMessage('Session expired. Please log in again.');
+                localStorage.removeItem('token');
+                navigate('/login');
+            } else {
+                setMessage('Failed to delete group. Please try again.');
+            }
+            console.error('Error deleting group:', error);
+        }
+    };
+
+    // Show the delete confirmation modal for the selected group
+    const confirmDeleteGroup = (groupId) => {
+        setGroupToDelete(groupId);
+        setShowModal(true);
+    };
+
     return (
         <div className="groups-container">
             <h2>Groups</h2>
-            <p>Join, create, and manage groups here.</p>
-            {/* Add features to join groups, view group tasks, etc. */}
+
+            {/* Create Group Form */}
+            <form onSubmit={handleCreateGroup} className="form-section">
+                <h3>Create a New Group</h3>
+                <div className="form-group">
+                    <label>Group Name</label>
+                    <input
+                        type="text"
+                        value={groupName}
+                        onChange={(e) => setGroupName(e.target.value)}
+                        required
+                    />
+                </div>
+                <div className="form-group">
+                    <label>Description</label>
+                    <textarea
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        required
+                    />
+                </div>
+                <button type="submit">Create Group</button>
+            </form>
+
+            {/* Display User's Groups */}
+            <h3>Your Groups</h3>
+            {groups.length > 0 ? (
+                <ul className="group-list">
+                    {groups.map((group) => (
+                        <li key={group.group_id}>
+                            <h4>{group.group_name}</h4>
+                            <p>{group.description}</p>
+                            {group.is_admin && (
+                                <button
+                                    onClick={() => confirmDeleteGroup(group.group_id)}
+                                    className="delete-button"
+                                >
+                                    Delete Group
+                                </button>
+                            )}
+                        </li>
+                    ))}
+                </ul>
+            ) : (
+                <p>You are not part of any groups yet.</p>
+            )}
+
+            {/* Confirmation Modal for Deleting a Group */}
+            <GroupModal
+                show={showModal}
+                onClose={() => setShowModal(false)}
+                onConfirm={handleDeleteGroup}
+            />
+
+            {message && <p className="message">{message}</p>}
         </div>
     );
 };
