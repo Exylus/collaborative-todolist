@@ -79,6 +79,7 @@ const SignUp = () => {
                 {error && <p className="error-message">{error}</p>}
                 {success && <p className="success-message">{success}</p>}
             </form>
+            <p>Already have an account? <a href='/login'>Login</a></p>
         </div>
     );
 };
