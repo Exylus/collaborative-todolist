@@ -8,6 +8,7 @@ const app = express();
 
 const port = process.env.SERVERPORT;
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.use(cors({
     origin: ['http://localhost:3000'],
@@ -19,13 +20,23 @@ app.listen(port, () => {
     console.log("Running server on port: " + port.toString());
 });
 
+
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-    if (token == null) return res.sendStatus(401);
+
+    if (token == null) {
+        return res.status(401).json({ error: 'No token provided' });
+    }
 
     jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-        if (err) return res.sendStatus(403);
+        if (err) {
+            if (err.name === 'TokenExpiredError') {
+                return res.status(403).json({ error: 'Token expired' });
+            }
+            return res.status(403).json({ error: 'Invalid token' });
+        }
+
         req.user = user;
         next();
     });
@@ -73,54 +84,75 @@ app.post('/login', (req, res) => {
     });
 });
 
-// Update User Profile
-app.put('/users/:id', authenticateToken, (req, res) => {
-    const { id } = req.params;
+// Update user infos
+app.put('/account/update', authenticateToken, (req, res) => {
+    const userId = req.user.userId;
     const { name, email } = req.body;
     const sql = 'UPDATE Users SET name = ?, email = ? WHERE user_id = ?';
-    db.query(sql, [name, email, id], (err, result) => {
+
+    db.query(sql, [name, email, userId], (err, result) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.status(200).json({ message: 'User profile updated successfully' });
+        res.status(200).json({ message: 'User information updated successfully' });
     });
 });
 
+
 // Change User Password
-app.put('/users/:id/password', authenticateToken, async (req, res) => {
-    const { id } = req.params;
+app.put('/account/password', authenticateToken, async (req, res) => {
+    const userId = req.user.userId;
     const { oldPassword, newPassword } = req.body;
-    try {
-        let sql = 'SELECT password FROM Users WHERE user_id = ?';
-        db.query(sql, [id], async (err, result) => {
+
+    // Get current hashed password
+    const sql = 'SELECT password FROM Users WHERE user_id = ?';
+    db.query(sql, [userId], async (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (results.length === 0) return res.status(404).json({ error: 'User not found' });
+
+        const currentHashedPassword = results[0].password;
+        const isMatch = await bcrypt.compare(oldPassword, currentHashedPassword);
+
+        if (!isMatch) {
+            return res.status(400).json({ error: 'Old password is incorrect' });
+        }
+
+        const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+        const updateSql = 'UPDATE Users SET password = ? WHERE user_id = ?';
+
+        db.query(updateSql, [hashedNewPassword, userId], (err) => {
             if (err) return res.status(500).json({ error: err.message });
-            if (result.length === 0) return res.status(404).json({ error: 'User not found' });
-
-            const isMatch = await bcrypt.compare(oldPassword, result[0].password);
-            if (isMatch) {
-                const hashedPassword = await bcrypt.hash(newPassword, 10);
-                sql = 'UPDATE Users SET password = ? WHERE user_id = ?';
-                db.query(sql, [hashedPassword, id], (err, result) => {
-                    if (err) return res.status(500).json({ error: err.message });
-                    res.status(200).json({ message: 'Password updated successfully' });
-                });
-            } else {
-                res.status(401).json({ error: 'Old password is incorrect' });
-            }
+            res.status(200).json({ message: 'Password updated successfully' });
         });
-
-    } catch (error) {
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
+    });
 });
 
 // Delete User
-app.delete('/users/:id', authenticateToken, (req, res) => {
-    const { id } = req.params;
-    let sql = 'DELETE FROM Users WHERE user_id = ?';
-    db.query(sql, [id], (err, result) => {
+app.delete('/account/delete', authenticateToken, (req, res) => {
+    const userId = req.user.userId;
+
+    // Delete user from the database
+    const sql = 'DELETE FROM Users WHERE user_id = ?';
+
+    db.query(sql, [userId], (err, result) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.status(200).json({ message: 'User deleted successfully' });
+
+        // Optionally, you can also handle other related data like deleting tasks, memberships, etc.
+        res.status(200).json({ message: 'Account deleted successfully' });
     });
 });
+
+// Get username and email
+app.get('/account', authenticateToken, (req, res) => {
+    const userId = req.user.userId;
+    const sql = 'SELECT name, email FROM Users WHERE user_id = ?';
+
+    db.query(sql, [userId], (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (results.length === 0) return res.status(404).json({ error: 'User not found' });
+
+        res.status(200).json(results[0]);
+    });
+});
+
 
 //////////////////////////////////////////////////
 //////////////////  TASKS   //////////////////////
@@ -172,54 +204,107 @@ app.delete('/tasks/:id', authenticateToken, (req, res) => {
 //////////////////////////////////////////////////
 
 // Create Group
-app.post('/groups', authenticateToken, (req, res) => {
-    const { groupName, description, adminId } = req.body;
-    const sql = 'INSERT INTO Group_List (group_name, description, admin_id) VALUES (?, ?, ?)';
-    db.query(sql, [groupName, description, adminId], (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.status(201).json({ message: 'Group created successfully', groupId: result.insertId });
+app.post('/groups/create', authenticateToken, (req, res) => {
+    const { groupName, description } = req.body;
+    const adminId = req.user.userId;
+
+    const createGroupSql = 'INSERT INTO Group_List (group_name, description, admin_id) VALUES (?, ?, ?)';
+
+    db.query(createGroupSql, [groupName, description, adminId], (err, result) => {
+        if (err) {
+            console.error('Error creating group:', err);
+            return res.status(500).json({ error: 'Failed to create group. Please try again.' });
+        }
+
+        const groupId = result.insertId;
+
+        // Insert the user into User_Groups table as an admin
+        const addUserToGroupSql = 'INSERT INTO User_Groups (user_id, group_id, role) VALUES (?, ?, "admin")';
+
+        db.query(addUserToGroupSql, [adminId, groupId], (err) => {
+            if (err) {
+                console.error('Error adding user to group:', err);
+                return res.status(500).json({ error: 'Failed to add user to group after creation.' });
+            }
+
+            res.status(201).json({ message: 'Group created and user added successfully!' });
+        });
     });
 });
 
 // Read Groups for a User
 app.get('/groups', authenticateToken, (req, res) => {
-    const { userId } = req.query;
+    const userId = req.user.userId;
+
     const sql = `
-        SELECT g.group_id, g.group_name, g.description 
+        SELECT g.group_id, g.group_name, g.description, 
+               CASE WHEN g.admin_id = ? THEN true ELSE false END AS is_admin
         FROM Group_List g
-        JOIN User_Groups ug ON g.group_id = ug.group_id
+        INNER JOIN User_Groups ug ON g.group_id = ug.group_id
         WHERE ug.user_id = ?`;
-    db.query(sql, [userId], (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
+
+    db.query(sql, [userId, userId], (err, results) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
         res.status(200).json(results);
+    });
+});
+
+//Join Group
+app.post('/groups/join', authenticateToken, (req, res) => {
+    const { groupId } = req.body;
+    const userId = req.user.userId;
+
+    const sql = 'INSERT INTO User_Groups (user_id, group_id, role) VALUES (?, ?, "member")';
+    db.query(sql, [userId, groupId], (err, result) => {
+        if (err) {
+            if (err.code === 'ER_DUP_ENTRY') {
+                return res.status(400).json({ error: 'You are already a member of this group' });
+            }
+            return res.status(500).json({ error: err.message });
+        }
+        res.status(200).json({ message: 'Successfully joined the group' });
     });
 });
 
 // Delete Group
 app.delete('/groups/:groupId', authenticateToken, (req, res) => {
     const { groupId } = req.params;
-    const userId = req.user.userId; // Extracted from JWT token
+    const userId = req.user.userId;
 
-    // Step 1: Verify that the requesting user is the admin of the group
+    // Verify if the user is the admin of the group before allowing deletion
     const verifyAdminSql = 'SELECT admin_id FROM Group_List WHERE group_id = ?';
-    db.query(verifyAdminSql, [groupId], (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (result.length === 0) return res.status(404).json({ error: 'Group not found' });
 
-        const adminId = result[0].admin_id;
-
-        // Step 2: Check if the requesting user is the admin
-        if (adminId !== userId) {
-            return res.status(403).json({ error: 'Only the group admin can delete this group' });
+    db.query(verifyAdminSql, [groupId], (err, results) => {
+        if (err) {
+            return res.status(500).json({ error: 'Internal server error' });
         }
 
-        // Step 3: Delete the group from Group_List and cascade delete from User_Groups
-        const deleteGroupSql = 'DELETE FROM Group_List WHERE group_id = ?';
-        db.query(deleteGroupSql, [groupId], (err, result) => {
-            if (err) return res.status(500).json({ error: err.message });
+        if (results.length === 0) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
 
-            // Deletion was successful
-            res.status(200).json({ message: 'Group deleted successfully, including all related memberships' });
+        const group = results[0];
+        if (group.admin_id !== userId) {
+            return res.status(403).json({ error: 'You are not authorized to delete this group' });
+        }
+
+        // Delete the group
+        const deleteGroupSql = 'DELETE FROM Group_List WHERE group_id = ?';
+        db.query(deleteGroupSql, [groupId], (err) => {
+            if (err) {
+                return res.status(500).json({ error: 'Internal server error' });
+            }
+
+            // Optionally, remove associated users from User_Groups table
+            const deleteUserGroupsSql = 'DELETE FROM User_Groups WHERE group_id = ?';
+            db.query(deleteUserGroupsSql, [groupId], (err) => {
+                if (err) {
+                    return res.status(500).json({ error: 'Error deleting associated group members' });
+                }
+                res.status(200).json({ message: 'Group deleted successfully' });
+            });
         });
     });
 });
