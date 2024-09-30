@@ -1,13 +1,38 @@
 .dashboard-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     text-align: center;
-    margin-top: 50px;
+    margin: 10px;
 }
 
 .dashboard-menu {
+    width: 60%;
     display: flex;
     justify-content: center;
     gap: 20px;
     margin-top: 30px;
+    flex-direction: column;
+    flex-basis: 60%;
+}
+
+.delete-account {
+    margin-top: 30px;
+    text-align: center;
+}
+
+.delete-button {
+    background-color: #d9534f;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.delete-button:hover {
+    background-color: #c9302c;
 }
 
 button {
@@ -19,6 +44,10 @@ button {
     border-radius: 8px;
     cursor: pointer;
     transition: background-color 0.3s;
+}
+
+button.logout-button {
+    width: 25%;
 }
 
 button:hover {
