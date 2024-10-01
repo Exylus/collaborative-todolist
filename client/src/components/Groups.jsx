@@ -156,7 +156,7 @@ const Groups = () => {
 
         const token = localStorage.getItem('token');
         try {
-            const response = await axios.post(`http://localhost:5000/groups/leave`, { groupId: groupToLeave }, {
+            const response = await axios.post(`http://localhost:3113/groups/leave`, { groupId: groupToLeave }, {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
