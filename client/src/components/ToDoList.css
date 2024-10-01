@@ -4,6 +4,10 @@
     padding: 20px;
 }
 
+.todo-container .go-back {
+    width: 25%;
+}
+
 .menu-buttons {
     display: flex;
     flex-direction: column;

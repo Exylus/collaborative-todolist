@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './ToDoList.css';
+import { useNavigate } from 'react-router-dom';
 
 const ToDoLists = () => {
     const [groups, setGroups] = useState([]);
@@ -12,7 +13,7 @@ const ToDoLists = () => {
     const [selectedGroup, setSelectedGroup] = useState('');
     const [view, setView] = useState('menu'); // menu, create, view
     const [message, setMessage] = useState('');
-
+    const navigate = useNavigate();
     useEffect(() => {
         if (view === 'create') {
             fetchGroups();
@@ -128,6 +129,7 @@ const ToDoLists = () => {
 
     return (
         <div className="todo-container">
+            <button className='go-back' onClick={() => (navigate('/dashboard'))}>Go back</button>
             <h2>To-Do List Management</h2>
 
             {/* Menu View */}
