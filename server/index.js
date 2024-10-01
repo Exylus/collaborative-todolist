@@ -184,11 +184,12 @@ app.get('/tasks', authenticateToken, (req, res) => {
     const userId = req.user.userId;
 
     const getTasksSql = `
-        SELECT t.task_id, t.title, t.description, t.due_date, t.is_completed, t.group_id, g.group_name
+        SELECT t.task_id, t.title, t.description, t.due_date, t.is_completed, t.group_id, g.group_name, t.user_id, g.admin_id
         FROM Tasks t
         LEFT JOIN Group_List g ON t.group_id = g.group_id
-        WHERE t.user_id = ? OR t.group_id IN 
-            (SELECT group_id FROM User_Groups WHERE user_id = ?)`;
+        WHERE (t.user_id = ? OR t.group_id IN 
+            (SELECT group_id FROM User_Groups WHERE user_id = ?)) 
+            AND t.is_archived = FALSE`;
 
     db.query(getTasksSql, [userId, userId], (err, results) => {
         if (err) {
@@ -223,20 +224,83 @@ app.put('/tasks/:taskId', authenticateToken, (req, res) => {
 // Delete Task
 app.delete('/tasks/:taskId', authenticateToken, (req, res) => {
     const { taskId } = req.params;
+    const userId = req.user.userId;
 
-    const deleteTaskSql = `DELETE FROM Tasks WHERE task_id = ?`;
+    const verifyUserSql = `
+        SELECT t.task_id, t.user_id, g.admin_id 
+        FROM Tasks t
+        LEFT JOIN Group_List g ON t.group_id = g.group_id
+        WHERE t.task_id = ?`;
 
-    db.query(deleteTaskSql, [taskId], (err, result) => {
+    db.query(verifyUserSql, [taskId], (err, result) => {
         if (err) {
-            console.error('Error deleting task:', err);
-            return res.status(500).json({ error: 'Failed to delete task.' });
+            console.error('Error verifying task:', err);
+            return res.status(500).json({ error: 'Internal server error' });
+        }
+
+        if (result.length === 0) {
+            return res.status(404).json({ error: 'Task not found' });
+        }
+
+        const task = result[0];
+
+        // Check if the user is either the creator or the group admin
+        if (task.user_id !== userId && task.admin_id !== userId) {
+            return res.status(403).json({ error: 'You are not authorized to delete this task' });
+        }
+
+        // Proceed to delete the task
+        const deleteTaskSql = `DELETE FROM Tasks WHERE task_id = ?`;
+
+        db.query(deleteTaskSql, [taskId], (err) => {
+            if (err) {
+                console.error('Error deleting task:', err);
+                return res.status(500).json({ error: 'Failed to delete task.' });
+            }
+
+            res.status(200).json({ message: 'Task deleted successfully!' });
+        });
+    });
+});
+
+// Mark Task As Completed
+app.put('/tasks/:taskId/toggle-complete', authenticateToken, (req, res) => {
+    const { taskId } = req.params;
+    const { isCompleted } = req.body; // Boolean to indicate if marking as completed or not
+
+    const updateTaskSql = `UPDATE Tasks SET is_completed = ? WHERE task_id = ?`;
+
+    db.query(updateTaskSql, [isCompleted, taskId], (err, result) => {
+        if (err) {
+            console.error('Error updating task status:', err);
+            return res.status(500).json({ error: 'Failed to update task status.' });
         }
 
         if (result.affectedRows === 0) {
             return res.status(404).json({ error: 'Task not found.' });
         }
 
-        res.status(200).json({ message: 'Task deleted successfully!' });
+        res.status(200).json({ message: `Task marked as ${isCompleted ? 'complete' : 'unfinished'} successfully!` });
+    });
+});
+
+// Archive Task
+app.put('/tasks/:taskId/archive', authenticateToken, (req, res) => {
+    const { taskId } = req.params;
+
+    const archiveTaskSql = `UPDATE Tasks SET is_archived = TRUE WHERE task_id = ?`;
+
+    db.query(archiveTaskSql, [taskId], (err, result) => {
+        if (err) {
+            console.error('Error archiving task:', err);
+            return res.status(500).json({ error: 'Failed to archive task.' });
+        }
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Task not found.' });
+        }
+
+        res.status(200).json({ message: 'Task archived successfully!' });
     });
 });
 

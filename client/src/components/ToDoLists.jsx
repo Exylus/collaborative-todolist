@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 const ToDoLists = () => {
     const [groups, setGroups] = useState([]);
     const [tasks, setTasks] = useState([]);
+    const [filteredTasks, setFilteredTasks] = useState([]);
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [dueDate, setDueDate] = useState('');
@@ -13,13 +14,16 @@ const ToDoLists = () => {
     const [selectedGroup, setSelectedGroup] = useState('');
     const [view, setView] = useState('menu'); // menu, create, view
     const [message, setMessage] = useState('');
+    const [filterType, setFilterType] = useState(''); // to store the selected filter type
+
     const navigate = useNavigate();
+
     useEffect(() => {
         if (view === 'create') {
-            fetchGroups();
+            fetchGroups(); // Fetch groups when creating a new task
         }
         if (view === 'view') {
-            fetchTasks();
+            fetchTasks(); // Fetch tasks when viewing tasks
         }
     }, [view]);
 
@@ -59,13 +63,20 @@ const ToDoLists = () => {
                 },
             });
             setTasks(response.data); // Update tasks state with fetched tasks
+            setFilteredTasks(response.data); // Set the filtered tasks to initial fetched tasks
         } catch (error) {
+            if (error.response && error.response.status === 403) {
+                setMessage('Session expired. Please log in again.');
+                localStorage.removeItem('token');
+                navigate('/login');
+            } else {
+                setMessage(error.response?.data?.error || 'Failed to fetching tasks. Please try again.');
+            }
             console.error('Error fetching tasks:', error);
-            setMessage('Error fetching tasks. Please log in again.');
         }
     };
 
-    // Function to create a task
+    // Function to create a task (personal or group)
     const handleCreateTask = async (e) => {
         e.preventDefault();
         const token = localStorage.getItem('token');
@@ -100,7 +111,7 @@ const ToDoLists = () => {
         }
     };
 
-    // Function to delete a task
+    // Function to delete a task (only allowed if user is the creator or group admin)
     const handleDeleteTask = async (taskId) => {
         const token = localStorage.getItem('token');
 
@@ -121,11 +132,75 @@ const ToDoLists = () => {
         }
     };
 
+    // Function to mark a task as complete or incomplete
+    const handleToggleComplete = async (taskId, isCompleted) => {
+        const token = localStorage.getItem('token');
+
+        try {
+            const response = await axios.put(`http://localhost:3113/tasks/${taskId}/toggle-complete`, {
+                isCompleted,
+            }, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (response.status === 200) {
+                setMessage(`Task marked as ${isCompleted ? 'complete' : 'unfinished'} successfully!`);
+                fetchTasks(); // Refresh the task list after updating status
+            }
+        } catch (error) {
+            setMessage('Failed to update task status. Please try again.');
+            console.error('Error updating task status:', error);
+        }
+    };
+
+    // Function to archive a task
+    const handleArchiveTask = async (taskId) => {
+        const token = localStorage.getItem('token');
+
+        try {
+            const response = await axios.put(`http://localhost:3113/tasks/${taskId}/archive`, null, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (response.status === 200) {
+                setMessage('Task archived successfully!');
+                fetchTasks(); // Refresh the task list after archiving
+            }
+        } catch (error) {
+            setMessage('Failed to archive task. Please try again.');
+            console.error('Error archiving task:', error);
+        }
+    };
+
+    // Function to handle filter change
+    const handleFilterChange = (e) => {
+        const selectedFilter = e.target.value;
+        setFilterType(selectedFilter);
+        applyFilter(selectedFilter);
+    };
+
+    // Function to apply the selected filter
+    const applyFilter = (filterType) => {
+        let sortedTasks = [...tasks];
+        if (filterType === 'dueDate') {
+            sortedTasks.sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+        } else if (filterType === 'creationDate') {
+            sortedTasks.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        }
+        setFilteredTasks(sortedTasks);
+    };
+
     // Function to handle view change
     const handleViewChange = (selectedView) => {
         setView(selectedView);
         setMessage('');
     };
+
+    const userId = localStorage.getItem('userId'); // Assuming userId is stored in localStorage
 
     return (
         <div className="todo-container">
@@ -219,20 +294,47 @@ const ToDoLists = () => {
                     <button onClick={() => handleViewChange('menu')} className="back-button">
                         Back to Menu
                     </button>
+                    <div className="filter-section">
+                        <label>Filter Tasks By: </label>
+                        <select value={filterType} onChange={handleFilterChange}>
+                            <option value="">None</option>
+                            <option value="dueDate">Due Date</option>
+                            <option value="creationDate">Creation Date</option>
+                        </select>
+                    </div>
                     <h3>Your Tasks</h3>
-                    {tasks.length > 0 ? (
+                    {filteredTasks.length > 0 ? (
                         <ul className="task-list">
-                            {tasks.map((task) => (
+                            {filteredTasks.map((task) => (
                                 <li key={task.task_id}>
+                                    <h4>{task.title}</h4>
+                                    <p>{task.description}</p>
                                     {task.group_id && (
                                         <p>Group: <strong>{task.group_name}</strong></p>
                                     )}
-                                    <h4>{task.title}</h4>
-                                    <p>{task.description}</p>
                                     <p>Due: {task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No due date'}</p>
-                                    <button onClick={() => handleDeleteTask(task.task_id)} className="delete-button">
-                                        Delete Task
-                                    </button>
+                                    <p>Status: {task.is_completed ? 'Completed' : 'Pending'}</p>
+
+                                    {task.is_completed ? (
+                                        <>
+                                            <button onClick={() => handleToggleComplete(task.task_id, false)} className="complete-button">
+                                                Mark as Unfinished
+                                            </button>
+                                            <button onClick={() => handleArchiveTask(task.task_id)} className="archive-button">
+                                                Archive Task
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <button onClick={() => handleToggleComplete(task.task_id, true)} className="complete-button">
+                                            Mark as Finished
+                                        </button>
+                                    )}
+
+                                    {(task.user_id === userId || task.admin_id === userId) && (
+                                        <button onClick={() => handleDeleteTask(task.task_id)} className="delete-button">
+                                            Delete Task
+                                        </button>
+                                    )}
                                 </li>
                             ))}
                         </ul>
