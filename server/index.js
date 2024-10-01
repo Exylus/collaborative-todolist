@@ -164,43 +164,79 @@ app.get('/account', authenticateToken, (req, res) => {
 //////////////////////////////////////////////////
 
 // Create Task
-app.post('/tasks', authenticateToken, (req, res) => {
-    const { userId, title, description, status, priority, dueDate } = req.body;
-    const sql = 'INSERT INTO Tasks (user_id, title, description, status, priority, due_date) VALUES (?, ?, ?, ?, ?, ?)';
-    db.query(sql, [userId, title, description, status, priority, dueDate], (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.status(201).json({ message: 'Task created successfully', taskId: result.insertId });
+app.post('/tasks/create', authenticateToken, (req, res) => {
+    const userId = req.user.userId;
+    const { groupId, title, description, dueDate } = req.body;
+
+    const createTaskSql = `INSERT INTO Tasks (user_id, group_id, title, description, due_date) VALUES (?, ?, ?, ?, ?)`;
+
+    db.query(createTaskSql, [userId, groupId || null, title, description, dueDate], (err, result) => {
+        if (err) {
+            console.error('Error creating task:', err);
+            return res.status(500).json({ error: 'Failed to create task. Please try again.' });
+        }
+        res.status(201).json({ message: 'Task created successfully!' });
     });
 });
 
 // Read Tasks
 app.get('/tasks', authenticateToken, (req, res) => {
-    const { userId } = req.query;
-    const sql = 'SELECT * FROM Tasks WHERE user_id = ?';
-    db.query(sql, [userId], (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
+    const userId = req.user.userId;
+
+    const getTasksSql = `
+        SELECT t.task_id, t.title, t.description, t.due_date, t.is_completed, t.group_id, g.group_name
+        FROM Tasks t
+        LEFT JOIN Group_List g ON t.group_id = g.group_id
+        WHERE t.user_id = ? OR t.group_id IN 
+            (SELECT group_id FROM User_Groups WHERE user_id = ?)`;
+
+    db.query(getTasksSql, [userId, userId], (err, results) => {
+        if (err) {
+            console.error('Error fetching tasks:', err);
+            return res.status(500).json({ error: 'Failed to fetch tasks.' });
+        }
         res.status(200).json(results);
     });
 });
 
 // Update Task
-app.put('/tasks/:id', authenticateToken, (req, res) => {
-    const { id } = req.params;
-    const { title, description, status, priority, dueDate } = req.body;
-    const sql = 'UPDATE Tasks SET title = ?, description = ?, status = ?, priority = ?, due_date = ? WHERE task_id = ?';
-    db.query(sql, [title, description, status, priority, dueDate, id], (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.status(200).json({ message: 'Task updated successfully' });
+app.put('/tasks/:taskId', authenticateToken, (req, res) => {
+    const { taskId } = req.params;
+    const { title, description, dueDate, isCompleted } = req.body;
+
+    const updateTaskSql = `UPDATE Tasks SET title = ?, description = ?, due_date = ?, is_completed = ? WHERE task_id = ?`;
+
+    db.query(updateTaskSql, [title, description, dueDate, isCompleted, taskId], (err, result) => {
+        if (err) {
+            console.error('Error updating task:', err);
+            return res.status(500).json({ error: 'Failed to update task.' });
+        }
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Task not found.' });
+        }
+
+        res.status(200).json({ message: 'Task updated successfully!' });
     });
 });
 
 // Delete Task
-app.delete('/tasks/:id', authenticateToken, (req, res) => {
-    const { id } = req.params;
-    const sql = 'DELETE FROM Tasks WHERE task_id = ?';
-    db.query(sql, [id], (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.status(200).json({ message: 'Task deleted successfully' });
+app.delete('/tasks/:taskId', authenticateToken, (req, res) => {
+    const { taskId } = req.params;
+
+    const deleteTaskSql = `DELETE FROM Tasks WHERE task_id = ?`;
+
+    db.query(deleteTaskSql, [taskId], (err, result) => {
+        if (err) {
+            console.error('Error deleting task:', err);
+            return res.status(500).json({ error: 'Failed to delete task.' });
+        }
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Task not found.' });
+        }
+
+        res.status(200).json({ message: 'Task deleted successfully!' });
     });
 });
 
@@ -243,7 +279,7 @@ app.get('/groups', authenticateToken, (req, res) => {
     const userId = req.user.userId;
 
     const sql = `
-        SELECT g.group_id, g.group_name, g.description, 
+        SELECT g.group_id, g.group_name, g.description, g.invite_code, 
                CASE WHEN g.admin_id = ? THEN true ELSE false END AS is_admin
         FROM Group_List g
         INNER JOIN User_Groups ug ON g.group_id = ug.group_id
@@ -387,16 +423,20 @@ app.post('/groups/leave', authenticateToken, (req, res) => {
 ///////////////////////////////////////////////////
 
 // Create Group Task
-app.post('/groups/:groupId/tasks', authenticateToken, (req, res) => {
-    const { groupId } = req.params;
-    const { title, description, status, dueDate } = req.body;
-    const sql = 'INSERT INTO Group_Tasks (group_id, title, description, status, due_date) VALUES (?, ?, ?, ?, ?)';
-    db.query(sql, [groupId, title, description, status, dueDate], (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.status(201).json({ message: 'Group task created successfully', groupTaskId: result.insertId });
+app.post('/tasks/create', authenticateToken, (req, res) => {
+    const userId = req.user.userId;
+    const { groupId, title, description, dueDate } = req.body;
+
+    const createTaskSql = `INSERT INTO Tasks (user_id, group_id, title, description, due_date) VALUES (?, ?, ?, ?, ?)`;
+
+    db.query(createTaskSql, [userId, groupId || null, title, description, dueDate], (err, result) => {
+        if (err) {
+            console.error('Error creating task:', err);
+            return res.status(500).json({ error: 'Failed to create task. Please try again.' });
+        }
+        res.status(201).json({ message: 'Task created successfully!' });
     });
 });
-
 // Read Group Tasks
 app.get('/groups/:groupId/tasks', authenticateToken, (req, res) => {
     const { groupId } = req.params;

@@ -18,7 +18,7 @@ const Groups = () => {
     useEffect(() => {
         // Fetch the list of groups the user is part of when the component loads
         fetchGroups();
-    });
+    }, []);
 
     const navigate = useNavigate();
 
@@ -183,6 +183,7 @@ const Groups = () => {
 
     return (
         <div className="groups-container">
+            <button className='go-back' onClick={() => (navigate('/dashboard'))}>Go back</button>
             <h2>Groups</h2>
 
             {/* Create Group Form */}
@@ -227,8 +228,17 @@ const Groups = () => {
                 <ul className="group-list">
                     {groups.map((group) => (
                         <li key={group.group_id}>
-                            <h4>{group.group_name}</h4>
-                            <p>{group.description}</p>
+                            <div className="group-content">
+                                <div className="group-informations">
+                                    <h4>Group Name: {group.group_name}</h4>
+                                    <p>Group Description: {group.description}</p>
+                                </div>
+                                {group.is_admin && (
+                                    <p>Invite code: {group.invite_code}</p>
+                                )}
+                            </div>
+
+
                             {group.is_admin ? (
                                 <button
                                     onClick={() => confirmDeleteGroup(group.group_id)}
