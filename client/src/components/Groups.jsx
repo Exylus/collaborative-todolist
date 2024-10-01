@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { GroupModal } from './Modal';
+import { DeleteGroupModal, LeaveGroupModal } from './Modal';
 import './Groups.css';
 
 const Groups = () => {
@@ -11,6 +11,9 @@ const Groups = () => {
     const [message, setMessage] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [groupToDelete, setGroupToDelete] = useState(null);
+    const [groupToLeave, setGroupToLeave] = useState(null);
+    const [showLeaveModal, setShowLeaveModal] = useState(false);
+    const [inviteCode, setInviteCode] = useState('');
 
     useEffect(() => {
         // Fetch the list of groups the user is part of when the component loads
@@ -79,6 +82,39 @@ const Groups = () => {
         }
     };
 
+    // Function to handle joining a group with an invite code
+    const handleJoinGroup = async (e) => {
+        e.preventDefault();
+        const token = localStorage.getItem('token');
+
+        try {
+            const response = await axios.post(
+                'http://localhost:3113/groups/join',
+                { inviteCode },
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            if (response.status === 200) {
+                setMessage('Successfully joined the group!');
+                setInviteCode('');
+                fetchGroups(); // Refresh the group list after joining a new group
+            }
+        } catch (error) {
+            if (error.response && error.response.status === 403) {
+                setMessage('Session expired. Please log in again.');
+                localStorage.removeItem('token');
+                navigate('/login');
+            } else {
+                setMessage(error.response?.data?.error || 'Failed to join group. Please try again.');
+            }
+            console.error('Error joining group:', error);
+        }
+    };
+
     // Function to handle deleting a group
     const handleDeleteGroup = async () => {
         if (!groupToDelete) return;
@@ -115,6 +151,36 @@ const Groups = () => {
         setShowModal(true);
     };
 
+    const handleLeaveGroup = async () => {
+        if (!groupToLeave) return;
+
+        const token = localStorage.getItem('token');
+        try {
+            const response = await axios.post(`http://localhost:5000/groups/leave`, { groupId: groupToLeave }, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (response.status === 200) {
+                setMessage('You have left the group successfully.');
+                setGroupToLeave(null);
+                setShowLeaveModal(false);
+                fetchGroups(); // Refresh the group list after leaving the group
+            }
+        } catch (error) {
+            setMessage('Failed to leave the group. Please try again.');
+            console.error('Error leaving group:', error);
+            setShowLeaveModal(false);
+        }
+    };
+
+    // Show the leave group confirmation modal
+    const confirmLeaveGroup = (groupId) => {
+        setGroupToLeave(groupId);
+        setShowLeaveModal(true);
+    };
+
     return (
         <div className="groups-container">
             <h2>Groups</h2>
@@ -141,7 +207,20 @@ const Groups = () => {
                 </div>
                 <button type="submit">Create Group</button>
             </form>
-
+            {/* Join Group Form */}
+            <form onSubmit={handleJoinGroup} className="form-section">
+                <h3>Join a Group</h3>
+                <div className="form-group">
+                    <label>Invite Code</label>
+                    <input
+                        type="text"
+                        value={inviteCode}
+                        onChange={(e) => setInviteCode(e.target.value)}
+                        required
+                    />
+                </div>
+                <button type="submit">Join Group</button>
+            </form>
             {/* Display User's Groups */}
             <h3>Your Groups</h3>
             {groups.length > 0 ? (
@@ -150,12 +229,19 @@ const Groups = () => {
                         <li key={group.group_id}>
                             <h4>{group.group_name}</h4>
                             <p>{group.description}</p>
-                            {group.is_admin && (
+                            {group.is_admin ? (
                                 <button
                                     onClick={() => confirmDeleteGroup(group.group_id)}
                                     className="delete-button"
                                 >
                                     Delete Group
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => confirmLeaveGroup(group.group_id)}
+                                    className="leave-button"
+                                >
+                                    Leave Group
                                 </button>
                             )}
                         </li>
@@ -166,10 +252,17 @@ const Groups = () => {
             )}
 
             {/* Confirmation Modal for Deleting a Group */}
-            <GroupModal
+            <DeleteGroupModal
                 show={showModal}
                 onClose={() => setShowModal(false)}
                 onConfirm={handleDeleteGroup}
+            />
+
+            {/* Confirmation Modal for Leaving a Group */}
+            <LeaveGroupModal
+                show={showLeaveModal}
+                onClose={() => setShowLeaveModal(false)}
+                onConfirm={handleLeaveGroup}
             />
 
             {message && <p className="message">{message}</p>}

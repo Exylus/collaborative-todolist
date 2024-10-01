@@ -1,7 +1,7 @@
 import React from 'react';
 import './Modal.css';
 
-const Modal = ({ show, onClose, onConfirm }) => {
+const DeleteAccountModal = ({ show, onClose, onConfirm }) => {
     if (!show) {
         return null; // If `show` is false, don't render the modal
     }
@@ -20,7 +20,7 @@ const Modal = ({ show, onClose, onConfirm }) => {
     );
 };
 
-export const GroupModal = ({ show, onClose, onConfirm }) => {
+export const DeleteGroupModal = ({ show, onClose, onConfirm }) => {
     if (!show) {
         return null; // If `show` is false, don't render the modal
     }
@@ -39,5 +39,23 @@ export const GroupModal = ({ show, onClose, onConfirm }) => {
     );
 };
 
+export const LeaveGroupModal = ({ show, onClose, onConfirm }) => {
+    if (!show) {
+        return null; // If `show` is false, don't render the modal
+    }
 
-export default Modal;
+    return (
+        <div className="modal-overlay">
+            <div className="modal-content">
+                <h2>Confirm leaving</h2>
+                <p>Are you sure you want to leave this group?</p>
+                <div className="modal-actions">
+                    <button onClick={onConfirm} className="confirm-button">Yes, Leave</button>
+                    <button onClick={onClose} className="cancel-button">Cancel</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default DeleteAccountModal;

@@ -1,14 +1,19 @@
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const express = require("express");
 const db = require('./db')
 const cors = require('cors')
+const crypto = require('crypto')
 require('dotenv').config();
 const app = express();
 
 const port = process.env.SERVERPORT;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+const generateInviteCode = () => {
+    return crypto.randomBytes(3).toString('hex').toUpperCase();
+};
 
 app.use(cors({
     origin: ['http://localhost:3000'],
@@ -207,10 +212,11 @@ app.delete('/tasks/:id', authenticateToken, (req, res) => {
 app.post('/groups/create', authenticateToken, (req, res) => {
     const { groupName, description } = req.body;
     const adminId = req.user.userId;
+    const inviteCode = generateInviteCode(); // Generate the invite code
 
-    const createGroupSql = 'INSERT INTO Group_List (group_name, description, admin_id) VALUES (?, ?, ?)';
+    const createGroupSql = 'INSERT INTO Group_List (group_name, description, admin_id, invite_code) VALUES (?, ?, ?, ?)';
 
-    db.query(createGroupSql, [groupName, description, adminId], (err, result) => {
+    db.query(createGroupSql, [groupName, description, adminId, inviteCode], (err, result) => {
         if (err) {
             console.error('Error creating group:', err);
             return res.status(500).json({ error: 'Failed to create group. Please try again.' });
@@ -227,7 +233,7 @@ app.post('/groups/create', authenticateToken, (req, res) => {
                 return res.status(500).json({ error: 'Failed to add user to group after creation.' });
             }
 
-            res.status(201).json({ message: 'Group created and user added successfully!' });
+            res.status(201).json({ message: 'Group created successfully!', inviteCode });
         });
     });
 });
@@ -251,20 +257,37 @@ app.get('/groups', authenticateToken, (req, res) => {
     });
 });
 
-//Join Group
 app.post('/groups/join', authenticateToken, (req, res) => {
-    const { groupId } = req.body;
     const userId = req.user.userId;
+    const { inviteCode } = req.body;
 
-    const sql = 'INSERT INTO User_Groups (user_id, group_id, role) VALUES (?, ?, "member")';
-    db.query(sql, [userId, groupId], (err, result) => {
+    // Find the group by invite code
+    const findGroupSql = 'SELECT group_id FROM Group_List WHERE invite_code = ?';
+
+    db.query(findGroupSql, [inviteCode], (err, results) => {
         if (err) {
-            if (err.code === 'ER_DUP_ENTRY') {
-                return res.status(400).json({ error: 'You are already a member of this group' });
-            }
-            return res.status(500).json({ error: err.message });
+            return res.status(500).json({ error: 'Internal server error' });
         }
-        res.status(200).json({ message: 'Successfully joined the group' });
+
+        if (results.length === 0) {
+            return res.status(404).json({ error: 'Invalid invite code. Group not found.' });
+        }
+
+        const groupId = results[0].group_id;
+
+        // Insert user into User_Groups
+        const addUserToGroupSql = 'INSERT INTO User_Groups (user_id, group_id, role) VALUES (?, ?, "member")';
+
+        db.query(addUserToGroupSql, [userId, groupId], (err) => {
+            if (err) {
+                if (err.code === 'ER_DUP_ENTRY') {
+                    return res.status(400).json({ error: 'You are already a member of this group' });
+                }
+                return res.status(500).json({ error: 'Error adding user to group' });
+            }
+
+            res.status(200).json({ message: 'Successfully joined the group' });
+        });
     });
 });
 
@@ -309,6 +332,7 @@ app.delete('/groups/:groupId', authenticateToken, (req, res) => {
     });
 });
 
+
 //////////////////////////////////////////////////
 ///////////////  USER_GROUP   ////////////////////
 //////////////////////////////////////////////////
@@ -324,12 +348,37 @@ app.post('/groups/join', authenticateToken, (req, res) => {
 });
 
 // Leave Group
-app.delete('/groups/leave', authenticateToken, (req, res) => {
-    const { userId, groupId } = req.body;
-    const sql = 'DELETE FROM User_Groups WHERE user_id = ? AND group_id = ?';
-    db.query(sql, [userId, groupId], (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.status(200).json({ message: 'User left the group successfully' });
+app.post('/groups/leave', authenticateToken, (req, res) => {
+    const userId = req.user.userId;
+    const { groupId } = req.body;
+
+    // Verify if the user is not an admin before allowing them to leave
+    const verifyAdminSql = 'SELECT admin_id FROM Group_List WHERE group_id = ?';
+
+    db.query(verifyAdminSql, [groupId], (err, results) => {
+        if (err) {
+            return res.status(500).json({ error: 'Internal server error' });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        const group = results[0];
+        if (group.admin_id === userId) {
+            return res.status(403).json({ error: 'Group admins cannot leave the group. Please delete the group instead.' });
+        }
+
+        // Remove the user from User_Groups
+        const leaveGroupSql = 'DELETE FROM User_Groups WHERE user_id = ? AND group_id = ?';
+
+        db.query(leaveGroupSql, [userId, groupId], (err) => {
+            if (err) {
+                return res.status(500).json({ error: 'Internal server error while trying to leave the group.' });
+            }
+
+            res.status(200).json({ message: 'User left the group successfully.' });
+        });
     });
 });
 
