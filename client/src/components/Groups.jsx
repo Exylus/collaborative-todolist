@@ -26,7 +26,7 @@ const Groups = () => {
     const fetchGroups = async () => {
         const token = localStorage.getItem('token');
         try {
-            const response = await axios.get('http://localhost:3113/groups', {
+            const response = await axios.get('https://email.erwanthomy.fr:4430/groups', {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -55,7 +55,7 @@ const Groups = () => {
 
         try {
             const response = await axios.post(
-                'http://localhost:3113/groups/create',
+                'https://email.erwanthomy.fr:4430/groups/create',
                 { groupName, description },
                 {
                     headers: {
@@ -89,7 +89,7 @@ const Groups = () => {
 
         try {
             const response = await axios.post(
-                'http://localhost:3113/groups/join',
+                'https://email.erwanthomy.fr:4430/groups/join',
                 { inviteCode },
                 {
                     headers: {
@@ -121,7 +121,7 @@ const Groups = () => {
 
         const token = localStorage.getItem('token');
         try {
-            const response = await axios.delete(`http://localhost:3113/groups/${groupToDelete}`, {
+            const response = await axios.delete(`https://email.erwanthomy.fr:4430/groups/${groupToDelete}`, {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -156,7 +156,7 @@ const Groups = () => {
 
         const token = localStorage.getItem('token');
         try {
-            const response = await axios.post(`http://localhost:3113/groups/leave`, { groupId: groupToLeave }, {
+            const response = await axios.post(`https://email.erwanthomy.fr:4430/groups/leave`, { groupId: groupToLeave }, {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },

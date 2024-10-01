@@ -36,7 +36,7 @@ const ToDoLists = () => {
         }
 
         try {
-            const response = await axios.get('http://localhost:3113/groups', {
+            const response = await axios.get('https://email.erwanthomy.fr:4430/groups', {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -57,7 +57,7 @@ const ToDoLists = () => {
         }
 
         try {
-            const response = await axios.get('http://localhost:3113/tasks', {
+            const response = await axios.get('https://email.erwanthomy.fr:4430/tasks', {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -83,7 +83,7 @@ const ToDoLists = () => {
 
         try {
             const response = await axios.post(
-                'http://localhost:3113/tasks/create',
+                'https://email.erwanthomy.fr:4430/tasks/create',
                 {
                     title,
                     description,
@@ -116,7 +116,7 @@ const ToDoLists = () => {
         const token = localStorage.getItem('token');
 
         try {
-            const response = await axios.delete(`http://localhost:3113/tasks/${taskId}`, {
+            const response = await axios.delete(`https://email.erwanthomy.fr:4430/tasks/${taskId}`, {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -137,7 +137,7 @@ const ToDoLists = () => {
         const token = localStorage.getItem('token');
 
         try {
-            const response = await axios.put(`http://localhost:3113/tasks/${taskId}/toggle-complete`, {
+            const response = await axios.put(`https://email.erwanthomy.fr:4430/tasks/${taskId}/toggle-complete`, {
                 isCompleted,
             }, {
                 headers: {
@@ -160,7 +160,7 @@ const ToDoLists = () => {
         const token = localStorage.getItem('token');
 
         try {
-            const response = await axios.put(`http://localhost:3113/tasks/${taskId}/archive`, null, {
+            const response = await axios.put(`https://email.erwanthomy.fr:4430/tasks/${taskId}/archive`, null, {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },

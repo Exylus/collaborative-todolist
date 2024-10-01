@@ -18,7 +18,7 @@ const AccountManagement = () => {
             navigate('/login');
         } else {
             axios
-                .get('http://localhost:3113/account', {
+                .get('https://email.erwanthomy.fr:4430/account', {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
@@ -46,7 +46,7 @@ const AccountManagement = () => {
 
         try {
             const response = await axios.put(
-                'http://localhost:3113/account/update',
+                'https://email.erwanthomy.fr:4430/account/update',
                 { name: userData.name, email: userData.email },
                 {
                     headers: {
@@ -77,7 +77,7 @@ const AccountManagement = () => {
 
         try {
             const response = await axios.put(
-                'http://localhost:3113/account/password',
+                'https://email.erwanthomy.fr:4430/account/password',
                 { oldPassword: password.oldPassword, newPassword: password.newPassword },
                 {
                     headers: {
@@ -106,7 +106,7 @@ const AccountManagement = () => {
         const token = localStorage.getItem('token');
 
         try {
-            const response = await axios.delete('http://localhost:3113/account/delete', {
+            const response = await axios.delete('https://email.erwanthomy.fr:4430/account/delete', {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },

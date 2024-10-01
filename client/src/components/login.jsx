@@ -16,7 +16,7 @@ const Login = () => {
     const handleLogin = async (e) => {
         e.preventDefault(); // Prevent the form from refreshing the page
         try {
-            const response = await axios.post('http://localhost:3113/login', {
+            const response = await axios.post('https://email.erwanthomy.fr:4430/login', {
                 email,
                 password
             });

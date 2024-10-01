@@ -16,7 +16,7 @@ const SignUp = () => {
     const handleSignUp = async (e) => {
         e.preventDefault(); // Prevent the form from refreshing the page
         try {
-            const response = await axios.post('http://localhost:3113/signup', {
+            const response = await axios.post('https://email.erwanthomy.fr:4430/signup', {
                 name: name,
                 email: email,
                 password: password
